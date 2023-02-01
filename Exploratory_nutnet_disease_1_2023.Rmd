@@ -1,0 +1,71 @@
+---
+title: "nutnet disease"
+author: "Katie Schroeder"
+date: "2023-01-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## loading in
+```{r loading}
+#load in data
+ks_disease<-read.csv("Stomata_Data_REU_2019_master.csv")
+ps_disease<-read.csv("nutnet_fungus_2019_master.csv")
+cover<-read.csv("NutNet_Species_Cover_May30_thru_August.csv")
+
+library(tidyverse)
+```
+
+## Basics of each data frame
+ks_disease = disease scoring by Megan and Katie for 2019 REU project.
+plots: 13 - 24
+treatments: all trts of block 2
+dates sampled: "6.18.19"   "6.21.2019" "7.10.2019" "7.31.2019"
+plants scored:"AGROPYRON REPENS"    "ANDROPOGON GERARDII" "POA PRATENSIS"
+
+ps_disease = disease scoring by Rachel Paseka and Alex Strauss in summer 2019. Lots of manual labor by Evelyn and Hajira and maybe Sam?
+plots: 1-60
+treatments: all trts all blocks
+dates sampled: "6/5/2019" "7/8/2019" "8/6/2019"
+plants scored: "Agropyron repens"    "Andropogon gerardii"
+
+cover = cover data by Megan and Katie for 2019 field season.
+plots: 1-36, 39, 43, 44, 45, 48, 50, 55, 56, 58, 59
+dates: "5.30.2019" "6.18.2019" "6.4.2019"  "7.10.2019" "7.23.2019" "7.24.2019" "7.8.2019" 
+treatments: All for blocks 1-3, C, N1, N5, N10 for blocks 4 and 5
+
+## Summaries
+```{r summarize}
+ps_disease %>%
+  count(date,host,plot)
+#1-20 replicates per plot per sampling day (most 1-20). Plants were flagged and tracked through time
+ps_disease %>%
+  count(date,host,trt)
+#40-80 replicates per trt per sampling day
+
+ks_disease %>% 
+  filter(!is.na(fungal)) %>%
+  count(date,plant,trt)
+#5-7 replicates per plot per sampling day
+```
+
+## General trends
+```{r}
+#make a total fungal column in alex and rachel's data
+ps_disease$fungal_old <- ps_disease$old_rust + ps_disease$old_bs
+ps_disease$fungal_new <- ps_disease$new_rust + ps_disease$new_bs
+
+library(ggpubr)
+hist(ps_disease$old_rust,breaks=50)
+hist(ps_disease$old_bs,breaks=50)
+
+hist(ps_disease$new_rust,breaks=50)
+#old rust is most frequently not 0
+
+ps_disease$trt<-factor(ps_disease$trt,levels=c("C","C_H","N1","N5","N10","P","K","PK","NK","NP","NPK","NPK_H"))
+ggerrorplot(ps_disease,x="trt",y="old_rust",desc_stat = "mean_sd",facet.by=c("date","host"))
+```
+

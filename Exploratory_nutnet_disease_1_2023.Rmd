@@ -14,6 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 #load in data
 ks_disease<-read.csv("Stomata_Data_REU_2019_master.csv")
 ps_disease<-read.csv("nutnet_fungus_2019_master.csv")
+ps_disease_pk<-read.csv("nutnet_fungus_2019_pk_added_col_added.csv")
 cover<-read.csv("NutNet_Species_Cover_May30_thru_August.csv")
 
 library(tidyverse)
@@ -65,7 +66,188 @@ hist(ps_disease$old_bs,breaks=50)
 hist(ps_disease$new_rust,breaks=50)
 #old rust is most frequently not 0
 
-ps_disease$trt<-factor(ps_disease$trt,levels=c("C","C_H","N1","N5","N10","P","K","PK","NK","NP","NPK","NPK_H"))
-ggerrorplot(ps_disease,x="trt",y="old_rust",desc_stat = "mean_sd",facet.by=c("date","host"))
+ps_disease_pk$trt<-factor(ps_disease$trt,levels=c("C","C_H","N1","N5","N10","P","K","PK","NK","NP","NPK","NPK_H"))
+ggerrorplot(filter(ps_disease,trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK"),x="trt",y="old_rust",desc_stat = "mean_sd",facet.by=c("date","host"))
+ggerrorplot(filter(ps_disease,trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK"),x="trt",y="new_rust",desc_stat = "mean_sd",facet.by=c("date","host"))
+
+#invert damage
+ggerrorplot(filter(ps_disease,trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK"),x="trt",y="old_invert",desc_stat = "mean_sd",facet.by=c("date","host"))
+ggerrorplot(filter(ps_disease,trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK"),x="trt",y="new_invert",desc_stat = "mean_sd",facet.by=c("date","host"))
+
+#if plants are diseased, which ones get hit hardest?
+ggerrorplot(filter(ps_disease,old_rust!=0 & (trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK")),x="trt",y="old_rust",desc_stat = "mean_se",facet.by=c("date","host"))
 ```
+
+## Specific questions
+```{r}
+#for treatments of interest (C, N1, N5, N10, PK, NPK), do we see any trends in rust scoring on old and new leaves for Andro and Agro at different points in the growing season? 
+#graph scoring info across N added with separate lines for PK and no PK
+#summarize by treatment, host species, and collection date
+
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+
+#add another column for infected individuals for old and new rust so we can get proportion infected for each treatment and sampling day
+ps_disease_pk %<>% 
+  mutate(old_rust_inf = case_when(
+    old_rust>0 ~ '1',
+    old_rust==0 ~ '0',
+    TRUE ~ "NA"
+  ),
+  new_rust_inf = case_when(
+    new_rust>0 ~ '1',
+    new_rust==0 ~ '0',
+    TRUE ~ "NA"),
+  old_rust_inf=as.numeric(old_rust_inf),
+  new_rust_inf=as.numeric(new_rust_inf))
+
+#summary statistics
+ps_disease_summary <- ps_disease_pk %>% 
+  filter(trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK") %>% 
+  group_by(trt,date,host) %>% 
+  summarize(mean_old_rust = mean(old_rust,na.rm=T),
+            se_old_rust = sd(old_rust,na.rm=T)/sqrt(n()),
+            mean_new_rust = mean(new_rust,na.rm=T),
+            se_new_rust = sd(new_rust,na.rm=T)/sqrt(n()),
+            N_added = unique(N_added),
+            PK_added = unique(PK_added),
+            )
+#overall summary
+#ps_disease_summary$trt %>% factor(ps_disease_summary$trt,levels=c("C","N1","N5","N10","PK","NPK"))
+ps_disease_summary %>% ggplot(aes(x=date,y=mean_old_rust,color=trt,group=trt)) + geom_point() +geom_line()+facet_wrap(.~host+PK_added) + theme_bw(base_size=24)+geom_pointrange(aes(ymin=mean_old_rust-se_old_rust,ymax=mean_old_rust+se_old_rust))
+
+#summary for proportion infected
+ps_disease_summary_old_rust <- ps_disease_pk %>%
+  filter(trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK") %>%
+  filter(!is.na(old_rust_inf)) %>% 
+  group_by(trt,host,date) %>%
+  summarize(old_rust_inf_count = sum(old_rust_inf),
+            old_rust_inf_scored = n(),
+            prop_old_rust_inf = old_rust_inf_count/old_rust_inf_scored,
+            N_added = unique(N_added),
+            PK_added = unique(PK_added))
+  
+ps_disease_summary_old_rust$trt <- factor(ps_disease_summary_old_rust$trt,levels=c("C","N1","N5","N10","PK","NPK"))
+       
+ps_disease_summary_old_rust %>% ggplot(aes(x=trt,y=prop_old_rust_inf)) + geom_point() + theme_bw() +facet_grid(cols=vars(date),rows=vars(host))
+
+ps_disease_summary_old_rust %>% ggplot(aes(date,prop_old_rust_inf,color=host,group=host)) + geom_point() + theme_bw() + facet_wrap(.~trt,nrow=1) + geom_line()
+
+ps_disease_summary_old_rust %>% filter(host=="Ange") %>% ggplot(aes(date,prop_old_rust_inf,color=trt,group=trt)) + geom_point() + theme_bw(base_size=24) + facet_wrap(.~PK_added) + geom_line()
+
+#summary for proportion infected
+ps_disease_summary_new_rust <- ps_disease_pk %>%
+  filter(trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK") %>%
+  filter(!is.na(new_rust_inf)) %>% 
+  group_by(trt,host,date) %>%
+  summarize(new_rust_inf_count = sum(new_rust_inf),
+            new_rust_inf_scored = n(),
+            prop_new_rust_inf = new_rust_inf_count/new_rust_inf_scored,
+            N_added = unique(N_added),
+            PK_added = unique(PK_added))
+  
+ps_disease_summary_new_rust$trt <- factor(ps_disease_summary_new_rust$trt,levels=c("C","N1","N5","N10","PK","NPK"))
+       
+ps_disease_summary_new_rust %>% ggplot(aes(x=trt,y=prop_new_rust_inf)) + geom_point() + theme_bw() +facet_grid(cols=vars(date),rows=vars(host))
+
+ps_disease_summary_new_rust %>% filter(host=="Ange") %>% ggplot(aes(date,prop_new_rust_inf,color=trt,group=trt)) + geom_point() + theme_bw(base_size=24) + facet_wrap(.~PK_added) + geom_line()
+```
+
+
+
+```{r}
+#trying to get disease-y-ness per plot
+
+cover %<>% filter(taxon=="ANDROPOGON GERARDII"|taxon=="AGROPYRON REPENS")
+#julian days of sampling: 151, 155, 169, 189, 191, 204, 205
+
+cover %<>%
+  mutate(month= case_when(
+    julian_day==151 ~ "June",
+    julian_day==155 ~ "June",
+    julian_day==169 ~ "bonus",
+    julian_day==189 ~ "July",
+    julian_day==191 ~ "July",
+    julian_day==204 ~ "August",
+    julian_day==205 ~ "August"
+  )) %>%
+  filter(month!="bonus")
+
+#filter out bonus sampling later
+
+#ps_sampling: 156, 189, 218
+
+#summary of prop inf by plot
+ps_disease_summary_for_cover <- ps_disease_pk %>%
+  filter(trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK") %>%
+  filter(!is.na(old_rust_inf)) %>% 
+  group_by(plot,host,month) %>%
+  summarize(old_rust_inf_count = sum(old_rust_inf),
+            old_rust_inf_scored = n(),
+            prop_old_rust_inf = old_rust_inf_count/old_rust_inf_scored,
+            N_added = unique(N_added),
+            PK_added = unique(PK_added))
+ps_disease_summary_for_cover2 <- ps_disease_pk %>%
+  filter(trt=="C"|trt=="N1"|trt=="N5"|trt=="N10"|trt=="PK"|trt=="NPK") %>%
+  filter(!is.na(new_rust_inf)) %>% 
+  group_by(plot,host,month) %>%
+  summarize(new_rust_inf_count = sum(new_rust_inf),
+            new_rust_inf_scored = n(),
+            prop_new_rust_inf = new_rust_inf_count/new_rust_inf_scored,
+            N_added = unique(N_added),
+            PK_added = unique(PK_added))
+ps_disease_summary_for_cover %<>% mutate(count=old_rust_inf_count,
+                                         scored=old_rust_inf_scored,
+                                         prop_inf=prop_old_rust_inf,
+                                         leaf="old") %>%
+  select(-c("old_rust_inf_count","old_rust_inf_scored","prop_old_rust_inf"))
+
+ps_disease_summary_for_cover2 %<>% mutate(count=new_rust_inf_count,
+                                         scored=new_rust_inf_scored,
+                                         prop_inf=prop_new_rust_inf,
+                                         leaf="new") %>%
+  select(-c("new_rust_inf_count","new_rust_inf_scored","prop_new_rust_inf"))
+
+disease_cover<-bind_rows(ps_disease_summary_for_cover,ps_disease_summary_for_cover2)
+cover%<>%select(-c("date","julian_day","block","subplot","functional.group","notes"))
+cover %<>% mutate(host= case_when(
+  taxon=="ANDROPOGON GERARDII" ~ "Ange",
+  taxon=="AGROPYRON REPENS" ~ "Agre"
+)) %>% select(-taxon)
+  
+cover %<>% unite(col="ID",c("host","month","plot"))
+disease_cover %<>% unite(col="ID",c("host","month","plot"))
+combo<-right_join(disease_cover,cover,by="ID")
+
+combo %<>% filter(!is.na(PK_added)) %>% mutate(disease_burden = prop_inf*cover) %>% separate(col="ID",into=c("host","month","plot"),sep="_")
+combo %>% ggplot(aes(x=N_added,y=disease_burden,color=trt,group=trt))+geom_boxplot()+facet_wrap(.~host+PK_added) + theme_bw()
+
+combo %>% filter(month=="June") %>% ggplot(aes(x=N_added,y=disease_burden,color=PK_added,group=PK_added))+geom_point()+facet_wrap(.~host+leaf)+theme_bw()+geom_smooth(se=FALSE,method=lm)
+combo %>% filter(month=="June") %>% ggplot(aes(x=N_added,y=cover,color=PK_added,group=PK_added))+geom_point()+facet_wrap(.~host+leaf)+theme_bw()+geom_smooth(se=FALSE,method=lm)
+
+
+
+combo %>% filter(month=="July") %>% ggplot(aes(x=N_added,y=disease_burden,color=PK_added,group=PK_added))+geom_point()+facet_wrap(.~host)+theme_bw()+geom_smooth(se=FALSE,method=lm)
+combo %>% filter(month=="August") %>% ggplot(aes(x=N_added,y=disease_burden,color=PK_added,group=PK_added))+geom_point()+facet_wrap(.~host)+theme_bw()+geom_smooth(se=FALSE,method=lm)
+
+combo %>% ggplot(aes(x=N_added,y=cover,color=PK_added,group=PK_added))+geom_point()+facet_wrap(.~host)+theme_bw()+geom_smooth(se=FALSE,method=lm)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
